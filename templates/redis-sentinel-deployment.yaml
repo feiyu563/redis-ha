@@ -1,0 +1,59 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}-sentinel
+spec:
+  replicas: {{ .Values.replicas.sentinels }}
+  template:
+    metadata:
+      labels:
+        app: "redis-ha"
+        name: redis-sentinel
+{{ include "labels.standard" . | indent 8 }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "name"
+                    operator: In
+                    values:
+                    - "redis-sentinel"
+              topologyKey: "kubernetes.io/hostname"
+      nodeSelector:
+        app: "{{ .Values.app }}-sentinel"
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      containers:
+      - name: sentinel
+        image: {{ .Values.redis_image }}
+        resources:
+{{ toYaml .Values.resources.sentinel | indent 10 }}
+        command:
+          - redis-sentinel
+        args:
+          - /etc/redis/sentinel.conf
+        env:
+          - name: TZ
+            value: "Asia/Shanghai"
+        ports:
+          - name: sentinel
+            containerPort: 26379
+            hostPort: 26379
+        securityContext:
+          capabilities:
+            drop: 
+            - ALL
+            add: 
+            - NET_BIND_SERVICE
+        volumeMounts:
+          - name: data
+            mountPath: /etc/redis
+            subPath: sentinelconf
+      volumes:
+      - name: data
+        hostPath:
+          path: /usr/local/redis

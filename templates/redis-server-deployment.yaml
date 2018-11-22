@@ -1,0 +1,70 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  # Pay attention to the redis-role label at runtime. The self-determination logic in the image sets this value accordingly.
+  name: {{ template "fullname" . }}-server
+  labels:
+    release: "{{ .Release.Name }}"
+    app: "redis-ha"
+    name: "redis-server"
+    redis-node: "true"
+{{ include "labels.standard" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicas.servers }}
+  template:
+    metadata:
+      labels:
+        app: "redis-ha"
+        name: "redis-server"
+        redis-node: "true"
+{{ include "labels.standard" . | indent 8 }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "name"
+                    operator: In
+                    values:
+                    - "redis-server"
+              topologyKey: "kubernetes.io/hostname"
+      nodeSelector:
+        app: {{ .Values.app }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      containers:
+      - name: redis
+        image: {{ .Values.redis_image }}
+        resources:
+{{ toYaml .Values.resources.server | indent 10 }}
+        command:
+          - redis-server
+        args:
+          - /etc/redis/redis.conf
+        env:
+          - name: TZ
+            value: "Asia/Shanghai"
+        ports:
+          - name: redis
+            containerPort: 6379
+            hostPort: 6379
+        securityContext:
+          capabilities:
+            drop: 
+            - ALL
+            add: 
+            - NET_BIND_SERVICE
+        volumeMounts:
+          - mountPath: /data
+            name: data
+            subPath: redisdata
+          - mountPath: /etc/redis
+            name: data
+            subPath: redisconf
+      volumes:
+      - name: data
+        hostPath:
+          path: /usr/local/redis
